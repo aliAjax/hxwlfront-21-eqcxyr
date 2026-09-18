@@ -1,20 +1,14 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-
-type Field = {
-  key: string;
-  label: string;
-  type?: "number" | "date" | "select";
-  options?: readonly string[];
-};
-
-type RecordItem = {
-  id: string;
-  status: string;
-  notes: string;
-  createdAt: string;
-  [key: string]: string | number;
-};
+import StationCard from "./StationCard.vue";
+import {
+  canStayInWarning,
+  isRestockWarning,
+  normalRecords,
+  sortedWarningRecords,
+  type Field,
+  type RecordItem
+} from "./station";
 
 const project = {
   "number": 21,
@@ -124,15 +118,20 @@ const note = ref("");
 const filter = ref(project.filters[0]);
 
 const filteredRecords = computed(() => {
-  if (filter.value.startsWith("全部")) return records.value;
-  return records.value.filter((record) => Object.values(record).includes(filter.value));
+  if (filter.value.startsWith("全部")) return normalRecords(records.value);
+  return normalRecords(records.value).filter((record) => Object.values(record).includes(filter.value));
 });
 
+// 补货预警区：不参与区域筛选，始终展示全部处于预警状态的站点，并按库存升序排列
+const warningRecords = computed(() => sortedWarningRecords(records.value));
+
 const metrics = computed(() => {
-  const total = records.value.length;
-  const second = records.value.filter((record) => record.status === statuses[1]).length;
-  const third = records.value.filter((record) => record.status === statuses[2]).length;
-  const numberValues = records.value.flatMap((record) =>
+  // 三项指标始终统计全部站点（含预警区）
+  const all = records.value;
+  const total = all.length;
+  const second = all.filter((record) => record.status === statuses[1]).length;
+  const third = all.filter((record) => record.status === statuses[2]).length;
+  const numberValues = all.flatMap((record) =>
     fields.filter((field) => field.type === "number").map((field) => Number(record[field.key] || 0))
   );
   const sum = numberValues.reduce((acc, value) => acc + value, 0);
@@ -155,23 +154,17 @@ function nextStatus(status: string) {
   return statuses[(index + 1) % statuses.length];
 }
 
-function primaryText(record: RecordItem) {
-  const first = fields[0];
-  const second = fields[1];
-  return [record[first.key], record[second.key]].filter(Boolean).join(" / ") || project.entityLabel;
-}
-
 function submit() {
-  records.value = [
-    {
-      ...form,
-      id: crypto.randomUUID(),
-      status: statuses[0],
-      notes: note.value || "暂无备注",
-      createdAt: new Date().toISOString()
-    } as RecordItem,
-    ...records.value
-  ];
+  const item = {
+    ...form,
+    id: crypto.randomUUID(),
+    status: statuses[0],
+    notes: note.value || "暂无备注",
+    createdAt: new Date().toISOString()
+  } as RecordItem;
+  // 新保存站点：营业中且库存低于 10000 升即进入补货预警区
+  item.warned = isRestockWarning(item);
+  records.value = [item, ...records.value];
   Object.assign(form, createBlank());
   note.value = "";
   persist();
@@ -179,6 +172,8 @@ function submit() {
 
 function flow(record: RecordItem) {
   record.status = nextStatus(record.status);
+  // 一旦离开营业中，撤出补货预警；站点仍保留在原数组位置，即回到普通列表原位置
+  if (!canStayInWarning(record)) record.warned = false;
   persist();
 }
 
@@ -237,23 +232,34 @@ function remove(id: string) {
             </select>
           </div>
 
+          <section v-if="warningRecords.length" class="warning-zone">
+            <div class="warning-head">
+              <h3>补货预警</h3>
+              <span class="warning-count">{{ warningRecords.length }} 站待补货 · 按库存升序</span>
+              <span class="warning-hint">预警区不参与区域筛选</span>
+            </div>
+            <div class="record-grid">
+              <StationCard
+                v-for="record in warningRecords"
+                :key="record.id"
+                :record="record"
+                :fields="fields"
+                @flow="flow"
+                @remove="remove"
+              />
+            </div>
+          </section>
+
           <div class="record-grid">
             <div v-if="filteredRecords.length === 0" class="empty">暂无匹配数据</div>
-            <article v-for="record in filteredRecords" :key="record.id" class="record">
-              <div class="record-head">
-                <p class="record-title">{{ primaryText(record) }}</p>
-                <span class="status">{{ record.status }}</span>
-              </div>
-              <div class="details">
-                <span v-for="field in fields" :key="field.key">{{ field.label }}: {{ record[field.key] }}</span>
-              </div>
-              <p class="note">{{ record.notes }}</p>
-              <div class="actions">
-                <button type="button" @click="flow(record)">流转状态</button>
-                <button class="secondary" type="button" @click="navigator.clipboard?.writeText(primaryText(record))">复制摘要</button>
-                <button class="danger" type="button" @click="remove(record.id)">删除</button>
-              </div>
-            </article>
+            <StationCard
+              v-for="record in filteredRecords"
+              :key="record.id"
+              :record="record"
+              :fields="fields"
+              @flow="flow"
+              @remove="remove"
+            />
           </div>
 
           <div class="mini-chart">
