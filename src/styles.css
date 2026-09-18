@@ -165,6 +165,55 @@ textarea {
   gap: 12px;
 }
 
+.warning-zone {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid #f0c36d;
+  border-radius: 8px;
+  background: #fffaf0;
+}
+
+.warning-head {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.warning-head h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #9a6b1f;
+}
+
+.warning-head span {
+  color: #8a6d3b;
+  font-size: 13px;
+}
+
+.record.warning {
+  border-color: #f0c36d;
+  background: #fffdf5;
+}
+
+.chips {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.warning-tag {
+  border-radius: 999px;
+  padding: 6px 9px;
+  background: #fdebd0;
+  color: #9a6b1f;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .record {
   border: 1px solid #dfe7f1;
   border-radius: 8px;

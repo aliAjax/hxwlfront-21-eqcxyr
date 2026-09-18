@@ -123,10 +123,29 @@ const form = reactive<Record<string, string | number>>(createBlank());
 const note = ref("");
 const filter = ref(project.filters[0]);
 
+const RESTOCK_STOCK_LIMIT = 10000;
+const stockField = fields.find((field) => field.type === "number");
+
+function stockOf(record: RecordItem) {
+  return stockField ? Number(record[stockField.key] || 0) : 0;
+}
+
+function isRestockWarning(record: RecordItem) {
+  return record.status === statuses[0] && stockOf(record) < RESTOCK_STOCK_LIMIT;
+}
+
 const filteredRecords = computed(() => {
   if (filter.value.startsWith("全部")) return records.value;
   return records.value.filter((record) => Object.values(record).includes(filter.value));
 });
+
+// 预警区不参与区域筛选，直接统计全部站点，按库存升序
+const warningRecords = computed(() =>
+  records.value.filter(isRestockWarning).sort((a, b) => stockOf(a) - stockOf(b))
+);
+
+// 普通列表保持原始顺序，撤出预警的站点回到原位置
+const normalRecords = computed(() => filteredRecords.value.filter((record) => !isRestockWarning(record)));
 
 const metrics = computed(() => {
   const total = records.value.length;
@@ -237,9 +256,34 @@ function remove(id: string) {
             </select>
           </div>
 
+          <section v-if="warningRecords.length" class="warning-zone">
+            <div class="warning-head">
+              <h3>补货预警</h3>
+              <span>{{ warningRecords.length }} 座{{ project.entityLabel }}库存低于 {{ RESTOCK_STOCK_LIMIT }}L，按库存升序</span>
+            </div>
+            <article v-for="record in warningRecords" :key="record.id" class="record warning">
+              <div class="record-head">
+                <p class="record-title">{{ primaryText(record) }}</p>
+                <div class="chips">
+                  <span class="warning-tag">补货预警</span>
+                  <span class="status">{{ record.status }}</span>
+                </div>
+              </div>
+              <div class="details">
+                <span v-for="field in fields" :key="field.key">{{ field.label }}: {{ record[field.key] }}</span>
+              </div>
+              <p class="note">{{ record.notes }}</p>
+              <div class="actions">
+                <button type="button" @click="flow(record)">流转状态</button>
+                <button class="secondary" type="button" @click="navigator.clipboard?.writeText(primaryText(record))">复制摘要</button>
+                <button class="danger" type="button" @click="remove(record.id)">删除</button>
+              </div>
+            </article>
+          </section>
+
           <div class="record-grid">
-            <div v-if="filteredRecords.length === 0" class="empty">暂无匹配数据</div>
-            <article v-for="record in filteredRecords" :key="record.id" class="record">
+            <div v-if="normalRecords.length === 0" class="empty">暂无匹配数据</div>
+            <article v-for="record in normalRecords" :key="record.id" class="record">
               <div class="record-head">
                 <p class="record-title">{{ primaryText(record) }}</p>
                 <span class="status">{{ record.status }}</span>
